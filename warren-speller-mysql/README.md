@@ -206,7 +206,9 @@ own group keys and `k`, joins the groups at `k`, and groups again, each aggregat
     that type. Both sides are counted for `COUNT(*)` and `COUNT(x)`, the side it reads for
     `COUNT(DISTINCT u)`, and the other side for a `SUM`;
   - for `COUNT(DISTINCT u, …)`, the columns `u` are of one grain of the side, hold no NULL, and
-    include every column of one of its unique keys.
+    include every column of one of its unique keys. The rule counts rows there because the catalog
+    says `u` is unique, so a catalog naming a unique key the table does not hold gives a wrong
+    count.
 - **The unique keys** of a table are the catalog's. A WITH query or a derived table has one when it
   returns every column it groups by, as plain references that hold no NULL; when, with no `GROUP
   BY` and no aggregate, it returns every column of a unique key of a relation from which its joins
