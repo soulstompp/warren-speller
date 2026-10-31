@@ -1,6 +1,6 @@
-# The spellers' workspace: one crate for each engine. Each carries its own licence and copyright.
+# The spellers' workspace: one crate for each engine's speller, and the PostgreSQL speller's laws. Each carries its own licence and copyright.
 [workspace]
-members = ["warren-speller-pg"]
+members = ["warren-speller-pg", "warren-speller-pg-laws"]
 resolver = "2"
 
 # pgrx unwinds a Rust panic into a PostgreSQL ERROR.

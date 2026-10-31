@@ -1,0 +1,8 @@
+# Copyright (c) 2026 Kenneth Allen Flegal
+# SPDX-License-Identifier: MIT OR Apache-2.0
+comment = 'The laws of warren-speller-pg: an extension that installs its planner hook, for its tests'
+default_version = '@CARGO_VERSION@'
+module_pathname = 'warren_speller_pg_laws'
+relocatable = false
+superuser = true
+trusted = false

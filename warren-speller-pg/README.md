@@ -321,8 +321,10 @@ each statement.
 - **NOT NULL** is a validated NOT NULL constraint, a primary key's among them; a
   `NOT NULL ... NOT VALID` constraint does not count.
 
-Apart from unique keys, the indexes a table has play no part in any rule: the tests respell the
-same question with primary keys alone, with B-trees, and with surveyors.
+Apart from unique keys, the indexes a table has play no part in any rule: the tests here respell the
+same question with primary keys alone and with B-trees, and
+[warren-surveyor-pg](https://github.com/soulstompp/warren-surveyor)'s own tests respell it with a
+surveyor on each table.
 
 A plan made from a spelling rests on the keys it read, so PostgreSQL makes it again when one of
 those tables changes in the catalog: a prepared statement whose table loses its primary key is
@@ -343,12 +345,14 @@ written.
 
 ## Where its tests run
 
-pgrx runs a crate's `#[pg_test]`s only in the extension it builds, so the rules' tests run in the
-surveyor's extension, `warren_surveyor_pg`, in `warren-surveyor-pg/src/respelling/` of
-[warren-surveyor](https://github.com/soulstompp/warren-surveyor): one module for each rule, one for
-a question that reaches all three, one for what a respelled statement reads, as whom, what its plan
+pgrx runs a crate's `#[pg_test]`s only in the extension it builds, and this crate builds none, so
+the rules' tests run in [`warren-speller-pg-laws`][laws], an extension beside it in this workspace
+whose `_PG_init` calls `init`, and which is never published: one module for each rule, one for a
+question that reaches all three, one for what a respelled statement reads, as whom, what its plan
 rests on, and how it is planned when its spelling fails, and one that makes the tables the tests
-run on.
+run on, with unique keys alone or with B-trees; and a test that a session respells its next
+statement once it loads the library. `cargo pgrx test pg18` (or `pg14` to `pg17`) in that
+directory runs them.
 
 ## License
 
@@ -367,4 +371,5 @@ additional terms or conditions.
 
 [LICENSE-APACHE]: https://github.com/soulstompp/warren-speller/blob/HEAD/warren-speller-pg/LICENSE-APACHE
 [LICENSE-MIT]: https://github.com/soulstompp/warren-speller/blob/HEAD/warren-speller-pg/LICENSE-MIT
+[laws]: https://github.com/soulstompp/warren-speller/tree/HEAD/warren-speller-pg-laws
 [respell]: https://github.com/soulstompp/sql-composer/blob/HEAD/README.md#a-union-of-arms-that-read-one-roster---respell
