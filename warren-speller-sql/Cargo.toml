@@ -1,0 +1,16 @@
+# Copyright (c) 2026 Kenneth Allen Flegal
+# SPDX-License-Identifier: MIT OR Apache-2.0
+[package]
+name = "warren-speller-sql"
+version = "0.1.0"
+edition = "2021"
+license = "MIT OR Apache-2.0"
+authors = ["Kenneth Allen Flegal"]
+description = "What a SQL statement reads, from sqlparser's syntax tree: each SELECT's relations, joins and conditions, for a speller that respells it"
+repository = "https://github.com/soulstompp/warren-speller"
+readme = "README.md"
+keywords = ["sql", "sqlparser", "rewrite", "query"]
+categories = ["database"]
+
+[dependencies]
+sqlparser = { version = "0.63.0", features = ["visitor"] }

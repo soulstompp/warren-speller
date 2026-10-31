@@ -272,6 +272,7 @@ row for each part of each index. Rows of two databases, or of another shape, are
 ## Reading and writing a statement
 
 - **The parser** is sqlparser's MySQL dialect, with string literals kept exactly as written.
+  [warren-speller-sql][sql] reads the statement's relations, joins and conditions on its tree.
 - **One statement.** Two, or one that cannot be read, is refused with the reason. Anything but a
   query is written back as read.
 - **What it writes.** A statement no rule applies to is written back exactly as it was read. A
@@ -321,3 +322,4 @@ additional terms or conditions.
 
 [LICENSE-APACHE]: https://github.com/soulstompp/warren-speller/blob/HEAD/warren-speller-mysql/LICENSE-APACHE
 [LICENSE-MIT]: https://github.com/soulstompp/warren-speller/blob/HEAD/warren-speller-mysql/LICENSE-MIT
+[sql]: https://github.com/soulstompp/warren-speller/blob/HEAD/warren-speller-sql/README.md

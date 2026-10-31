@@ -14,5 +14,9 @@ with these changes:
   and could lose rows.
 - A grouped `SELECT` that groups by a number is written back as read. In a side's `GROUP BY` the
   number named a place in that side's select list, and MySQL refused the respelled statement.
+- It reads a statement's relations, joins and conditions, and the statement's text, through
+  [warren-speller-sql][sql], in MySQL's dialect and with MySQL's quotes. No respelling changes
+  with it.
 
 [before]: https://docs.rs/crate/warren-mysql-speller/0.1.1/source/CHANGELOG.md
+[sql]: https://github.com/soulstompp/warren-speller/blob/HEAD/warren-speller-sql/README.md

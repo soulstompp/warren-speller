@@ -1846,6 +1846,7 @@ name = "warren-speller-mysql"
 version = "0.1.0"
 dependencies = [
  "sqlparser",
+ "warren-speller-sql",
 ]
 
 [[package]]
@@ -1863,6 +1864,13 @@ dependencies = [
  "pgrx-tests",
  "postgres",
  "warren-speller-pg",
+]
+
+[[package]]
+name = "warren-speller-sql"
+version = "0.1.0"
+dependencies = [
+ "sqlparser",
 ]
 
 [[package]]

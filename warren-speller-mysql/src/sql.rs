@@ -6,13 +6,11 @@
 
 use sqlparser::ast::{Expr, Ident, Query, Statement};
 use sqlparser::dialect::MySqlDialect;
-use sqlparser::keywords::ALL_KEYWORDS;
-use sqlparser::parser::{Parser, ParserError, ParserOptions};
+use sqlparser::parser::ParserError;
 use sqlparser::tokenizer::{Token, Tokenizer};
 
-fn options() -> ParserOptions {
-    ParserOptions::new().with_unescape(false)
-}
+/// The quote MySQL writes a name in.
+pub(crate) const QUOTE: char = '`';
 
 /// Whether a text holds `||` or `&&`, which the parser reads otherwise than MySQL may: MySQL reads
 /// `||` as OR unless the session's sql_mode has PIPES_AS_CONCAT, and `&&` as AND, binding as
@@ -30,49 +28,22 @@ pub fn holds_bars_or_ampersands(text: &str) -> bool {
 
 /// The statements of a text.
 pub fn parse_statements(text: &str) -> Result<Vec<Statement>, ParserError> {
-    Parser::new(&MySqlDialect {})
-        .with_options(options())
-        .try_with_sql(text)?
-        .parse_statements()
+    warren_speller_sql::text::parse_statements(&MySqlDialect {}, text)
 }
 
 /// A text that is one query, and nothing more.
 pub fn parse_query(text: &str) -> Option<Query> {
-    let mut statements = parse_statements(text).ok()?;
-    if statements.len() != 1 {
-        return None;
-    }
-    match statements.pop()? {
-        Statement::Query(q) => Some(*q),
-        _ => None,
-    }
+    warren_speller_sql::text::parse_query(&MySqlDialect {}, text)
 }
 
 /// A text that is one expression, and nothing more.
 pub fn parse_expr(text: &str) -> Option<Expr> {
-    let mut parser = Parser::new(&MySqlDialect {})
-        .with_options(options())
-        .try_with_sql(text)
-        .ok()?;
-    let expr = parser.parse_expr().ok()?;
-    (parser.peek_token().token == Token::EOF).then_some(expr)
+    warren_speller_sql::text::parse_expr(&MySqlDialect {}, text)
 }
 
 /// An identifier for a name a respelling writes: plain when it can be, in backquotes otherwise.
 pub fn ident(name: &str) -> Ident {
-    let plain = name
-        .bytes()
-        .next()
-        .is_some_and(|b| b.is_ascii_lowercase() || b == b'_')
-        && name
-            .bytes()
-            .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'_');
-    let upper = name.to_ascii_uppercase();
-    if plain && !ALL_KEYWORDS.contains(&upper.as_str()) {
-        Ident::new(name)
-    } else {
-        Ident::with_quote('`', name)
-    }
+    warren_speller_sql::text::ident(name, QUOTE)
 }
 
 #[cfg(test)]

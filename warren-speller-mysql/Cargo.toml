@@ -13,3 +13,4 @@ categories = ["database"]
 
 [dependencies]
 sqlparser = { version = "0.63.0", features = ["visitor"] }
+warren-speller-sql = { path = "../warren-speller-sql", version = "0.1.0" }

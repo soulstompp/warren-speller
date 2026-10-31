@@ -16,8 +16,12 @@ This repository holds one speller for each engine, each a crate of its own:
   parsed it, against a catalog of the database read from `information_schema`. A program, a proxy
   or a driver hands it the statement's text and sends what it returns.
 
-Each crate's README sets out every rule as what it changes, the read it cancels and when it applies,
-so that a database engine can take any of them into its own planner.
+Beside them, [`warren-speller-sql`](warren-speller-sql/README.md) reads what a statement reads on
+sqlparser's tree: each `SELECT`'s relations, joins and conditions, in any dialect sqlparser reads.
+The MySQL speller is built on it.
+
+Each speller's README sets out every rule as what it changes, the read it cancels and when it
+applies, so that a database engine can take any of them into its own planner.
 
 ## License
 
