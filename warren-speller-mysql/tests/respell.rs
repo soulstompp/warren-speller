@@ -5,7 +5,7 @@
 //! by hand, and the statements each rule leaves as they were read.
 
 use warren_speller_mysql::catalog::Catalog;
-use warren_speller_mysql::respell;
+use warren_speller_mysql::{respell, respell_query, sql};
 
 // ---------------------------------------------------------------------------------------------
 // A database's catalog, as the server holds it
@@ -527,6 +527,29 @@ fn a_grouped_select_holding_a_changing_function_is_left_alone() {
 #[test]
 fn a_grouped_select_holding_a_user_variable_is_left_alone() {
     as_read_on_lego(&counted_where("c.row_no = @r"));
+}
+
+#[test]
+fn a_statement_holding_two_bars_is_left_alone() {
+    // MySQL reads `||` as OR unless the session's sql_mode has PIPES_AS_CONCAT
+    let sql = counted_where("c.row_no = 1 || c.row_no = 2 AND b.name = 'x'");
+    as_read_on_lego(&sql);
+    let read = sql::parse_query(&sql).unwrap();
+    let mut q = read.clone();
+    respell_query(&lego(), &mut q);
+    assert_eq!(q, read, "the query was respelled");
+}
+
+#[test]
+fn a_statement_holding_two_ampersands_is_left_alone() {
+    // MySQL reads `&&` as AND, binding as loosely as AND
+    as_read_on_lego(&counted_where("c.row_no = 1 && c.set_num = 'x'"));
+}
+
+#[test]
+fn two_bars_or_ampersands_in_a_string_or_a_comment_do_not_stop_the_respelling() {
+    let sql = counted_where("c.set_num = 'a||b&&c' /* || && */");
+    assert_ne!(on_lego(&sql), sql, "the statement was not respelled");
 }
 
 #[test]

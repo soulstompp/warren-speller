@@ -8,10 +8,24 @@ use sqlparser::ast::{Expr, Ident, Query, Statement};
 use sqlparser::dialect::MySqlDialect;
 use sqlparser::keywords::ALL_KEYWORDS;
 use sqlparser::parser::{Parser, ParserError, ParserOptions};
-use sqlparser::tokenizer::Token;
+use sqlparser::tokenizer::{Token, Tokenizer};
 
 fn options() -> ParserOptions {
     ParserOptions::new().with_unescape(false)
+}
+
+/// Whether a text holds `||` or `&&`, which the parser reads otherwise than MySQL may: MySQL reads
+/// `||` as OR unless the session's sql_mode has PIPES_AS_CONCAT, and `&&` as AND, binding as
+/// loosely as AND does.
+pub fn holds_bars_or_ampersands(text: &str) -> bool {
+    Tokenizer::new(&MySqlDialect {}, text)
+        .with_unescape(false)
+        .tokenize()
+        .map_or(true, |tokens| {
+            tokens
+                .iter()
+                .any(|t| matches!(t, Token::StringConcat | Token::Overlap | Token::PGCubeRoot))
+        })
 }
 
 /// The statements of a text.

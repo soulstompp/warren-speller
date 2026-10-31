@@ -27,7 +27,8 @@ use sqlparser::ast::{
 use std::collections::BTreeSet;
 
 /// One statement respelled against the catalog, followed by a line break; the statement exactly as
-/// read when nothing applies to it. Anything but a query is written back as read.
+/// read when nothing applies to it, or when it holds `||` or `&&`, which the parser reads otherwise
+/// than MySQL may. Anything but a query is written back as read.
 pub fn respell(catalog: &Catalog, statement: &str) -> Result<String, Refused> {
     respell_with(catalog, statement, |_| {})
 }
@@ -52,7 +53,9 @@ pub fn respell_with(
     };
     let before = q.clone();
     first(&mut q);
-    respell_query(catalog, &mut q);
+    if !sql::holds_bars_or_ampersands(statement) {
+        respell_query(catalog, &mut q);
+    }
     if q == before {
         return Ok(statement.to_string());
     }
@@ -64,8 +67,15 @@ pub fn respell_with(
     Ok(format!("{q}{end}\n"))
 }
 
-/// A query respelled in place against the catalog; left as it is when nothing applies to it.
+/// A query respelled in place against the catalog; left as it is when nothing applies to it, or
+/// when it holds `||`, which MySQL reads as OR or as concatenation by the session's sql_mode.
+///
+/// The parser reads `&&` as AND but binds it more tightly than MySQL does, and the query it gives
+/// does not show it: [`respell`] and [`respell_with`] leave a statement holding `&&` as written.
 pub fn respell_query(catalog: &Catalog, q: &mut Query) {
+    if relations::scan(&*q).bars {
+        return;
+    }
     let mut used = relations::names_used(&*q);
     identities(q, &Ctx::new(catalog), &mut used);
 }

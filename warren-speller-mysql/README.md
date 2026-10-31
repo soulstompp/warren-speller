@@ -86,6 +86,9 @@ let respelled = respell(&catalog, "SELECT …")?;
 - **Nothing a rule would repeat or reorder is moved:** a function whose value may change between
   two calls (`RAND`, `UUID`, `UUID_SHORT`, `SYSDATE`, `SLEEP`, `BENCHMARK`, the lock functions,
   `LAST_INSERT_ID`, `RANDOM_BYTES`), a user variable, or a window function.
+- **A statement holding `||` or `&&` is written back as read.** MySQL reads `||` as `OR` unless
+  the session's `sql_mode` has `PIPES_AS_CONCAT`, which the statement does not show; and the parser
+  binds `&&` more tightly than MySQL, which reads it as `AND`.
 
 ## Rule 1: a relation every `UNION ALL` arm joins is joined once
 

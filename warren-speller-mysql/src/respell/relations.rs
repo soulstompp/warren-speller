@@ -910,13 +910,15 @@ const VOLATILE: [&str; 13] = [
 
 /// What a part of a statement holds that a respelling must not copy, move or repeat: a `?`
 /// parameter, a function whose value may change between calls, a user variable, a window function,
-/// or a query nested in an expression.
+/// or a query nested in an expression; and `||`, by which a statement is left as written: MySQL
+/// reads it as OR or as concatenation by the session's sql_mode.
 #[derive(Default, Debug)]
 pub struct Scan {
     pub placeholder: bool,
     pub volatile: bool,
     pub window: bool,
     pub subquery: bool,
+    pub bars: bool,
 }
 
 impl Scan {
@@ -945,6 +947,10 @@ impl Visitor for Scan {
             Expr::Subquery(_) | Expr::Exists { .. } | Expr::InSubquery { .. } => {
                 self.subquery = true
             }
+            Expr::BinaryOp {
+                op: BinaryOperator::StringConcat,
+                ..
+            } => self.bars = true,
             _ => {}
         }
         ControlFlow::Continue(())
