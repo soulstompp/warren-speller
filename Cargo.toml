@@ -1,0 +1,11 @@
+# The spellers' workspace: one crate for each engine. Each carries its own licence and copyright.
+[workspace]
+members = ["warren-speller-pg"]
+resolver = "2"
+
+# pgrx unwinds a Rust panic into a PostgreSQL ERROR.
+[profile.dev]
+panic = "unwind"
+
+[profile.release]
+panic = "unwind"
