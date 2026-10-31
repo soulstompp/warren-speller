@@ -182,8 +182,9 @@ own group keys and `k`, joins the groups at `k`, and groups again, each aggregat
 - Every item of the select list is named: an alias, or a column reference.
 - A `GROUP BY` item is a position in the select list, a name the select list gives (where no
   relation has a column of that name, as MySQL reads it), or an expression of columns; none holds
-  an aggregate. An `ORDER BY` item is a position, a name the select list gives, or an expression of
-  the `GROUP BY` items and aggregates, with no `NULLS FIRST` or `NULLS LAST`.
+  an aggregate, and none is a number, written there or in the select list item it names. An
+  `ORDER BY` item is a position, a name the select list gives, or an expression of the `GROUP BY`
+  items and aggregates, with no `NULLS FIRST` or `NULLS LAST`.
 - It reads between 2 and 16 relations: tables the catalog holds, WITH queries in scope, derived
   tables with an alias, each whose columns can be read.
 - Every aggregate is `COUNT(*)`, `COUNT(x)`, `COUNT(DISTINCT u, …)` of plain columns, `SUM(x)` of

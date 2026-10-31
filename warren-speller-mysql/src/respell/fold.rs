@@ -167,7 +167,8 @@ fn read(s: &Select, q: &Query, ctx: &Ctx) -> Option<Block> {
             }
             e => qualified(e, &rels)?,
         };
-        if has_aggregate(&e) {
+        // a number in a side's GROUP BY would name a place in that side's select list
+        if has_aggregate(&e) || number(&e) {
             return None;
         }
         groups.push(e);
@@ -209,6 +210,15 @@ fn read(s: &Select, q: &Query, ctx: &Ctx) -> Option<Block> {
         order,
         merged: Vec::new(),
     })
+}
+
+/// Whether an expression is a number, in parentheses or not.
+fn number(e: &Expr) -> bool {
+    match e {
+        Expr::Nested(inner) => number(inner),
+        Expr::Value(v) => matches!(v.value, Value::Number(..)),
+        _ => false,
+    }
 }
 
 /// The block with each WITH query read once and each derived table read as their relations; none

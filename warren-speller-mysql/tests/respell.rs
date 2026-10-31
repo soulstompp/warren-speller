@@ -376,6 +376,19 @@ fn a_group_reading_both_sides_is_left_alone() {
     );
 }
 
+#[test]
+fn a_number_grouped_by_through_the_select_list_is_left_alone() {
+    // a number in a side's GROUP BY would name a place in that side's select list
+    as_read_on_lego(
+        "SELECT 5 AS v, b.home_zone, COUNT(*) AS n \
+         FROM lego_builders b JOIN lego_collection c ON c.builder_id = b.builder_id GROUP BY 1, 2",
+    );
+    as_read_on_lego(
+        "SELECT 5 AS v, b.home_zone, COUNT(*) AS n \
+         FROM lego_builders b JOIN lego_collection c ON c.builder_id = b.builder_id GROUP BY v, b.home_zone",
+    );
+}
+
 /// The builders joined to their collection rows, by home zone, with one aggregate.
 fn by_zone(aggregate: &str) -> String {
     format!(
