@@ -28,6 +28,16 @@ fn lego_without_keys() -> Catalog {
     Catalog::parse(&kept.join("\n")).unwrap()
 }
 
+/// The catalog with a column more in the inventories and in the collection rows, each under a
+/// collation that ignores case.
+fn lego_with_columns_without_case() -> Catalog {
+    Catalog::parse(&format!(
+        "{LEGO}column\tlego\tlego_inventories\tset_num_ci\tYES\tvarchar\tutf8mb4_0900_ai_ci\t\t\n\
+         column\tlego\tlego_collection\ttyped_set_num_ci\tYES\tvarchar\tutf8mb4_0900_ai_ci\t\t\n"
+    ))
+    .unwrap()
+}
+
 /// The statement respelled against lego's catalog.
 fn on_lego(sql: &str) -> String {
     respell(&lego(), sql).unwrap_or_else(|e| panic!("{sql}: {e}"))
@@ -59,11 +69,12 @@ fn a_statement_that_is_not_a_query_is_written_as_read() {
 fn a_string_is_written_back_as_it_was_written() {
     assert_eq!(
         on_lego(
-            r"SELECT b.home_zone, COUNT(*) AS n FROM lego_builders b JOIN lego_collection c ON c.builder_id = b.builder_id WHERE c.set_num = 'it''s \\ \'x\'' GROUP BY b.home_zone"
+            r"SELECT cy.zone, COUNT(*) AS n FROM lego_builders b JOIN lego_collection c ON c.builder_id = b.builder_id JOIN lego_streets st ON st.street_id = b.street_id JOIN lego_postcodes pc ON pc.postcode_id = st.postcode_id JOIN lego_cities cy ON cy.city_id = pc.city_id WHERE c.set_num = 'it''s \\ \'x\'' GROUP BY cy.zone"
         ),
-        "WITH side_a (k1, g1, n) AS (SELECT b.builder_id, b.home_zone, COUNT(*) FROM lego_builders b \
-         GROUP BY b.builder_id, b.home_zone) \
-         SELECT side_a.g1 AS home_zone, CAST(SUM(side_a.n * side_b.n) AS SIGNED) AS n \
+        "WITH side_a (k1, g1, n) AS (SELECT b.builder_id, cy.zone, COUNT(*) FROM lego_builders b \
+         JOIN lego_streets st ON st.street_id = b.street_id JOIN lego_postcodes pc ON pc.postcode_id = st.postcode_id \
+         JOIN lego_cities cy ON cy.city_id = pc.city_id GROUP BY b.builder_id, cy.zone) \
+         SELECT side_a.g1 AS zone, CAST(SUM(side_a.n * side_b.n) AS SIGNED) AS n \
          FROM side_a \
          JOIN (SELECT c.builder_id, COUNT(*) FROM lego_collection c \
          WHERE c.set_num = 'it''s \\\\ \\'x\\'' AND c.builder_id IN (SELECT k1 FROM side_a) GROUP BY c.builder_id) \
@@ -242,17 +253,21 @@ fn arms_holding_a_parameter_are_left_alone() {
 // ---------------------------------------------------------------------------------------------
 // A grouped SELECT over a join, grouped on each side before the join
 
-/// Each home zone's collection rows, their row numbers summed, and the least set they hold.
-const ZONES: &str = "SELECT b.home_zone, COUNT(*) AS n, SUM(c.row_no) AS s, MIN(c.set_num) AS m \
-                     FROM lego_builders b JOIN lego_collection c ON c.builder_id = b.builder_id GROUP BY b.home_zone";
+/// Each zone's collection rows, their row numbers summed, and the least set they hold: a builder's
+/// zone is its city's, through its street and postcode.
+const ZONES: &str = "SELECT cy.zone, COUNT(*) AS n, SUM(c.row_no) AS s, MIN(c.set_num) AS m \
+                     FROM lego_builders b JOIN lego_collection c ON c.builder_id = b.builder_id \
+                     JOIN lego_streets st ON st.street_id = b.street_id JOIN lego_postcodes pc ON pc.postcode_id = st.postcode_id \
+                     JOIN lego_cities cy ON cy.city_id = pc.city_id GROUP BY cy.zone";
 
 #[test]
 fn a_grouped_join_is_grouped_on_each_side_before_the_join() {
     assert_eq!(
         on_lego(ZONES),
-        "WITH side_a (k1, g1, n) AS (SELECT b.builder_id, b.home_zone, COUNT(*) FROM lego_builders b \
-         GROUP BY b.builder_id, b.home_zone) \
-         SELECT side_a.g1 AS home_zone, CAST(SUM(side_a.n * side_b.n) AS SIGNED) AS n, \
+        "WITH side_a (k1, g1, n) AS (SELECT b.builder_id, cy.zone, COUNT(*) FROM lego_builders b \
+         JOIN lego_streets st ON st.street_id = b.street_id JOIN lego_postcodes pc ON pc.postcode_id = st.postcode_id \
+         JOIN lego_cities cy ON cy.city_id = pc.city_id GROUP BY b.builder_id, cy.zone) \
+         SELECT side_a.g1 AS zone, CAST(SUM(side_a.n * side_b.n) AS SIGNED) AS n, \
          SUM(side_b.p2 * side_a.n) AS s, MIN(side_b.p3) AS m \
          FROM side_a \
          JOIN (SELECT c.builder_id, COUNT(*), SUM(c.row_no), MIN(c.set_num) FROM lego_collection c \
@@ -262,7 +277,7 @@ fn a_grouped_join_is_grouped_on_each_side_before_the_join() {
 }
 
 /// The collection rows of the first builders, with the lines of their sets and of the sets nested
-/// in them, by home zone and colour: the rows counted and the bricks summed.
+/// in them, by zone and colour: the rows counted and the bricks summed.
 const OWNED: &str = "WITH owned AS (SELECT c.builder_id, c.row_no, c.set_num FROM lego_collection c WHERE c.builder_id < 50), \
      held AS (SELECT o.builder_id, o.row_no, o.set_num, i.id AS inventory_id, 1 AS copies \
      FROM owned o JOIN lego_inventories i ON i.set_num = o.set_num AND i.version = 1 \
@@ -270,17 +285,21 @@ const OWNED: &str = "WITH owned AS (SELECT c.builder_id, c.row_no, c.set_num FRO
      FROM owned o JOIN lego_inventories i ON i.set_num = o.set_num AND i.version = 1 \
      JOIN lego_inventory_sets sub ON sub.inventory_id = i.id \
      JOIN lego_inventories ci ON ci.set_num = sub.set_num AND ci.version = 1) \
-     SELECT b.home_zone, col.name AS colour, COUNT(DISTINCT l.builder_id, l.row_no) AS owned, \
+     SELECT cy.zone, col.name AS colour, COUNT(DISTINCT l.builder_id, l.row_no) AS owned, \
      SUM(ip.quantity * l.copies) AS bricks \
      FROM held l JOIN lego_builders b ON b.builder_id = l.builder_id \
      JOIN lego_inventory_parts ip ON ip.inventory_id = l.inventory_id \
      JOIN lego_colors col ON col.id = ip.color_id \
+     JOIN lego_streets st ON st.street_id = b.street_id JOIN lego_postcodes pc ON pc.postcode_id = st.postcode_id \
+     JOIN lego_cities cy ON cy.city_id = pc.city_id \
      GROUP BY 1, 2 ORDER BY bricks DESC, 1, 2 LIMIT 10";
 
 const OWNED_FOLDED: &str = "WITH owned AS (SELECT c.builder_id, c.row_no, c.set_num FROM lego_collection c WHERE c.builder_id < 50), \
-     side_a (k1, g1, n) AS (SELECT o.set_num, b.home_zone, COUNT(*) FROM owned o \
-     JOIN lego_builders b ON b.builder_id = o.builder_id GROUP BY o.set_num, b.home_zone) \
-     SELECT side_a.g1 AS home_zone, side_b.g2 AS colour, CAST(SUM(side_a.n) AS SIGNED) AS owned, \
+     side_a (k1, g1, n) AS (SELECT o.set_num, cy.zone, COUNT(*) FROM owned o \
+     JOIN lego_builders b ON b.builder_id = o.builder_id \
+     JOIN lego_streets st ON st.street_id = b.street_id JOIN lego_postcodes pc ON pc.postcode_id = st.postcode_id \
+     JOIN lego_cities cy ON cy.city_id = pc.city_id GROUP BY o.set_num, cy.zone) \
+     SELECT side_a.g1 AS zone, side_b.g2 AS colour, CAST(SUM(side_a.n) AS SIGNED) AS owned, \
      SUM(side_b.p2 * side_a.n) AS bricks \
      FROM side_a \
      JOIN (SELECT arms.k1, col.name, SUM(ip.quantity * arms.c2) \
@@ -333,14 +352,18 @@ fn a_parameter_outside_the_grouped_select_stays_where_it_was() {
 fn a_derived_table_is_kept_whole_when_the_cut_needs_no_more() {
     assert_eq!(
         on_lego(
-            "SELECT z.home_zone, COUNT(*) AS n FROM (SELECT b.home_zone, b.builder_id FROM lego_builders b \
+            "SELECT z.zone, COUNT(*) AS n FROM (SELECT cy.zone, b.builder_id FROM lego_builders b \
+             JOIN lego_streets st ON st.street_id = b.street_id JOIN lego_postcodes pc ON pc.postcode_id = st.postcode_id \
+             JOIN lego_cities cy ON cy.city_id = pc.city_id \
              WHERE b.builder_id < 100) z JOIN lego_collection c ON c.builder_id = z.builder_id \
-             GROUP BY z.home_zone ORDER BY n DESC, z.home_zone LIMIT 3"
+             GROUP BY z.zone ORDER BY n DESC, z.zone LIMIT 3"
         ),
-        "WITH side_a (k1, g1, n) AS (SELECT z.builder_id, z.home_zone, COUNT(*) \
-         FROM (SELECT b.home_zone, b.builder_id FROM lego_builders b WHERE b.builder_id < 100) z \
-         GROUP BY z.builder_id, z.home_zone) \
-         SELECT side_a.g1 AS home_zone, CAST(SUM(side_a.n * side_b.n) AS SIGNED) AS n \
+        "WITH side_a (k1, g1, n) AS (SELECT z.builder_id, z.zone, COUNT(*) \
+         FROM (SELECT cy.zone, b.builder_id FROM lego_builders b \
+         JOIN lego_streets st ON st.street_id = b.street_id JOIN lego_postcodes pc ON pc.postcode_id = st.postcode_id \
+         JOIN lego_cities cy ON cy.city_id = pc.city_id WHERE b.builder_id < 100) z \
+         GROUP BY z.builder_id, z.zone) \
+         SELECT side_a.g1 AS zone, CAST(SUM(side_a.n * side_b.n) AS SIGNED) AS n \
          FROM side_a \
          JOIN (SELECT c.builder_id, COUNT(*) FROM lego_collection c WHERE c.builder_id IN (SELECT k1 FROM side_a) \
          GROUP BY c.builder_id) AS side_b (k1, n) \
@@ -352,14 +375,17 @@ fn a_derived_table_is_kept_whole_when_the_cut_needs_no_more() {
 fn columns_joined_across_the_cut_join_the_sides_on_each() {
     assert_eq!(
         on_lego(
-            "SELECT b.home_zone, COUNT(DISTINCT p.purchase_id) AS n, MAX(CONCAT(p.store, b.name)) AS m, SUM(c.row_no) AS r \
+            "SELECT cy.zone, COUNT(DISTINCT p.purchase_id) AS n, MAX(CONCAT(p.store, b.name)) AS m, SUM(c.row_no) AS r \
              FROM lego_purchases p JOIN lego_builders b ON b.builder_id = p.builder_id \
-             JOIN lego_collection c ON c.builder_id = p.builder_id AND c.row_no = p.row_no GROUP BY b.home_zone"
+             JOIN lego_collection c ON c.builder_id = p.builder_id AND c.row_no = p.row_no \
+             JOIN lego_streets st ON st.street_id = b.street_id JOIN lego_postcodes pc ON pc.postcode_id = st.postcode_id \
+             JOIN lego_cities cy ON cy.city_id = pc.city_id GROUP BY cy.zone"
         ),
-        "WITH side_a (k1, k2, g1, n, p2) AS (SELECT p.builder_id, p.row_no, b.home_zone, COUNT(*), \
+        "WITH side_a (k1, k2, g1, n, p2) AS (SELECT p.builder_id, p.row_no, cy.zone, COUNT(*), \
          MAX(CONCAT(p.store, b.name)) FROM lego_purchases p JOIN lego_builders b ON b.builder_id = p.builder_id \
-         GROUP BY p.builder_id, p.row_no, b.home_zone) \
-         SELECT side_a.g1 AS home_zone, CAST(SUM(side_a.n) AS SIGNED) AS n, MAX(side_a.p2) AS m, \
+         JOIN lego_streets st ON st.street_id = b.street_id JOIN lego_postcodes pc ON pc.postcode_id = st.postcode_id \
+         JOIN lego_cities cy ON cy.city_id = pc.city_id GROUP BY p.builder_id, p.row_no, cy.zone) \
+         SELECT side_a.g1 AS zone, CAST(SUM(side_a.n) AS SIGNED) AS n, MAX(side_a.p2) AS m, \
          SUM(side_b.p3 * side_a.n) AS r \
          FROM side_a \
          JOIN (SELECT c.builder_id, c.row_no, SUM(c.row_no) FROM lego_collection c \
@@ -371,8 +397,10 @@ fn columns_joined_across_the_cut_join_the_sides_on_each() {
 #[test]
 fn a_group_reading_both_sides_is_left_alone() {
     as_read_on_lego(
-        "SELECT CONCAT(b.home_zone, c.set_num) AS z, COUNT(*) AS n \
-         FROM lego_builders b JOIN lego_collection c ON c.builder_id = b.builder_id GROUP BY 1",
+        "SELECT CONCAT(cy.zone, c.set_num) AS z, COUNT(*) AS n \
+         FROM lego_builders b JOIN lego_collection c ON c.builder_id = b.builder_id \
+         JOIN lego_streets st ON st.street_id = b.street_id JOIN lego_postcodes pc ON pc.postcode_id = st.postcode_id \
+         JOIN lego_cities cy ON cy.city_id = pc.city_id GROUP BY 1",
     );
 }
 
@@ -380,26 +408,32 @@ fn a_group_reading_both_sides_is_left_alone() {
 fn a_number_grouped_by_through_the_select_list_is_left_alone() {
     // a number in a side's GROUP BY would name a place in that side's select list
     as_read_on_lego(
-        "SELECT 5 AS v, b.home_zone, COUNT(*) AS n \
-         FROM lego_builders b JOIN lego_collection c ON c.builder_id = b.builder_id GROUP BY 1, 2",
+        "SELECT 5 AS v, cy.zone, COUNT(*) AS n \
+         FROM lego_builders b JOIN lego_collection c ON c.builder_id = b.builder_id \
+         JOIN lego_streets st ON st.street_id = b.street_id JOIN lego_postcodes pc ON pc.postcode_id = st.postcode_id \
+         JOIN lego_cities cy ON cy.city_id = pc.city_id GROUP BY 1, 2",
     );
     as_read_on_lego(
-        "SELECT 5 AS v, b.home_zone, COUNT(*) AS n \
-         FROM lego_builders b JOIN lego_collection c ON c.builder_id = b.builder_id GROUP BY v, b.home_zone",
+        "SELECT 5 AS v, cy.zone, COUNT(*) AS n \
+         FROM lego_builders b JOIN lego_collection c ON c.builder_id = b.builder_id \
+         JOIN lego_streets st ON st.street_id = b.street_id JOIN lego_postcodes pc ON pc.postcode_id = st.postcode_id \
+         JOIN lego_cities cy ON cy.city_id = pc.city_id GROUP BY v, cy.zone",
     );
 }
 
-/// The builders joined to their collection rows, by home zone, with one aggregate.
+/// The builders joined to their collection rows, by zone, with one aggregate.
 fn by_zone(aggregate: &str) -> String {
     format!(
-        "SELECT b.home_zone, {aggregate} AS a \
-         FROM lego_builders b JOIN lego_collection c ON c.builder_id = b.builder_id GROUP BY b.home_zone"
+        "SELECT cy.zone, {aggregate} AS a \
+         FROM lego_builders b JOIN lego_collection c ON c.builder_id = b.builder_id \
+         JOIN lego_streets st ON st.street_id = b.street_id JOIN lego_postcodes pc ON pc.postcode_id = st.postcode_id \
+         JOIN lego_cities cy ON cy.city_id = pc.city_id GROUP BY cy.zone"
     )
 }
 
 #[test]
 fn an_aggregate_reading_both_sides_is_left_alone() {
-    as_read_on_lego(&by_zone("SUM(c.row_no * b.builder_id)"));
+    as_read_on_lego(&by_zone("SUM(c.row_no * cy.population)"));
 }
 
 #[test]
@@ -439,10 +473,13 @@ fn a_count_of_distinct_values_that_may_be_null_is_left_alone() {
     ));
 }
 
-/// The purchases by the zone of the builder a join reaches, and their collection rows.
-const COUNTED: &str = "SELECT b.home_zone, COUNT(DISTINCT p.purchase_id) AS n, MAX(CONCAT(p.store, b.name)) AS m, \
-     SUM(c.row_no) AS r FROM lego_purchases p JOIN lego_builders b ON b.home_zone = p.store \
-     JOIN lego_collection c ON c.builder_id = p.builder_id AND c.row_no = p.row_no GROUP BY b.home_zone";
+/// The purchases joined to the cities on their store, a column no unique key holds, then to the
+/// builders of those cities and to their collection rows, by zone.
+const COUNTED: &str = "SELECT cy.zone, COUNT(DISTINCT p.purchase_id) AS n, MAX(CONCAT(p.store, b.name)) AS m, \
+     SUM(c.row_no) AS r FROM lego_purchases p JOIN lego_cities cy ON cy.zone = p.store \
+     JOIN lego_postcodes pc ON pc.city_id = cy.city_id JOIN lego_streets st ON st.postcode_id = pc.postcode_id \
+     JOIN lego_builders b ON b.street_id = st.street_id \
+     JOIN lego_collection c ON c.builder_id = p.builder_id AND c.row_no = p.row_no GROUP BY cy.zone";
 
 #[test]
 fn a_counted_side_joined_on_a_column_that_is_not_unique_is_left_alone() {
@@ -451,7 +488,13 @@ fn a_counted_side_joined_on_a_column_that_is_not_unique_is_left_alone() {
 
 #[test]
 fn a_counted_side_joined_to_a_table_the_catalog_gives_no_key_is_left_alone() {
-    let keyed = COUNTED.replace("b.home_zone = p.store", "b.builder_id = p.builder_id");
+    // the purchase's own builder, and that builder's zone
+    let keyed = COUNTED.replace(
+        "JOIN lego_cities cy ON cy.zone = p.store JOIN lego_postcodes pc ON pc.city_id = cy.city_id \
+         JOIN lego_streets st ON st.postcode_id = pc.postcode_id JOIN lego_builders b ON b.street_id = st.street_id",
+        "JOIN lego_builders b ON b.builder_id = p.builder_id JOIN lego_streets st ON st.street_id = b.street_id \
+         JOIN lego_postcodes pc ON pc.postcode_id = st.postcode_id JOIN lego_cities cy ON cy.city_id = pc.city_id",
+    );
     assert_ne!(on_lego(&keyed), keyed);
     let unkeyed: Vec<&str> = LEGO
         .lines()
@@ -464,66 +507,77 @@ fn a_counted_side_joined_to_a_table_the_catalog_gives_no_key_is_left_alone() {
 #[test]
 fn an_outer_join_is_left_alone() {
     as_read_on_lego(
-        "SELECT b.home_zone, COUNT(*) AS n FROM lego_builders b LEFT JOIN lego_collection c ON c.builder_id = b.builder_id \
-         GROUP BY b.home_zone",
+        "SELECT cy.zone, COUNT(*) AS n FROM lego_builders b LEFT JOIN lego_collection c ON c.builder_id = b.builder_id \
+         JOIN lego_streets st ON st.street_id = b.street_id JOIN lego_postcodes pc ON pc.postcode_id = st.postcode_id \
+         JOIN lego_cities cy ON cy.city_id = pc.city_id GROUP BY cy.zone",
     );
 }
 
 #[test]
 fn sides_joined_by_an_inequality_are_left_alone() {
     as_read_on_lego(
-        "SELECT b.home_zone, COUNT(*) AS n FROM lego_builders b JOIN lego_collection c ON c.builder_id > b.builder_id \
-         GROUP BY b.home_zone",
+        "SELECT cy.zone, COUNT(*) AS n FROM lego_builders b JOIN lego_collection c ON c.builder_id > b.builder_id \
+         JOIN lego_streets st ON st.street_id = b.street_id JOIN lego_postcodes pc ON pc.postcode_id = st.postcode_id \
+         JOIN lego_cities cy ON cy.city_id = pc.city_id GROUP BY cy.zone",
     );
 }
 
 #[test]
 fn sides_joined_under_an_or_are_left_alone() {
     as_read_on_lego(
-        "SELECT b.home_zone, COUNT(*) AS n FROM lego_builders b JOIN lego_collection c ON c.builder_id = b.builder_id \
-         OR c.row_no = 1 GROUP BY b.home_zone",
+        "SELECT cy.zone, COUNT(*) AS n FROM lego_builders b JOIN lego_collection c ON c.builder_id = b.builder_id \
+         OR c.row_no = 1 \
+         JOIN lego_streets st ON st.street_id = b.street_id JOIN lego_postcodes pc ON pc.postcode_id = st.postcode_id \
+         JOIN lego_cities cy ON cy.city_id = pc.city_id GROUP BY cy.zone",
     );
 }
 
 #[test]
 fn a_lateral_derived_table_reading_the_select_around_it_is_left_alone() {
     as_read_on_lego(
-        "SELECT x.home_zone, x.n FROM lego_builders o CROSS JOIN LATERAL (SELECT b.home_zone, COUNT(*) AS n \
-         FROM lego_builders b JOIN lego_collection c ON c.builder_id = b.builder_id WHERE b.builder_id = o.builder_id \
-         GROUP BY b.home_zone) AS x",
+        "SELECT x.zone, x.n FROM lego_builders o CROSS JOIN LATERAL (SELECT cy.zone, COUNT(*) AS n \
+         FROM lego_builders b JOIN lego_collection c ON c.builder_id = b.builder_id \
+         JOIN lego_streets st ON st.street_id = b.street_id JOIN lego_postcodes pc ON pc.postcode_id = st.postcode_id \
+         JOIN lego_cities cy ON cy.city_id = pc.city_id WHERE b.builder_id = o.builder_id \
+         GROUP BY cy.zone) AS x",
     );
 }
 
 #[test]
 fn a_subquery_reading_the_select_around_it_is_left_alone() {
     as_read_on_lego(
-        "SELECT o.builder_id FROM lego_builders o WHERE EXISTS (SELECT b.home_zone, COUNT(*) AS n \
-         FROM lego_builders b JOIN lego_collection c ON c.builder_id = b.builder_id WHERE b.builder_id = o.builder_id \
-         GROUP BY b.home_zone)",
+        "SELECT o.builder_id FROM lego_builders o WHERE EXISTS (SELECT cy.zone, COUNT(*) AS n \
+         FROM lego_builders b JOIN lego_collection c ON c.builder_id = b.builder_id \
+         JOIN lego_streets st ON st.street_id = b.street_id JOIN lego_postcodes pc ON pc.postcode_id = st.postcode_id \
+         JOIN lego_cities cy ON cy.city_id = pc.city_id WHERE b.builder_id = o.builder_id \
+         GROUP BY cy.zone)",
     );
 }
 
 #[test]
 fn a_column_no_relation_holds_is_left_alone() {
     as_read_on_lego(
-        "SELECT b.home_zone, COUNT(*) AS n FROM lego_builders b JOIN lego_collection c ON c.builder_id = b.builder_id \
-         WHERE c.colour = 1 GROUP BY b.home_zone",
+        "SELECT cy.zone, COUNT(*) AS n FROM lego_builders b JOIN lego_collection c ON c.builder_id = b.builder_id \
+         JOIN lego_streets st ON st.street_id = b.street_id JOIN lego_postcodes pc ON pc.postcode_id = st.postcode_id \
+         JOIN lego_cities cy ON cy.city_id = pc.city_id WHERE c.colour = 1 GROUP BY cy.zone",
     );
 }
 
 #[test]
 fn a_table_the_catalog_does_not_hold_is_left_alone() {
     as_read_on_lego(
-        "SELECT b.home_zone, COUNT(*) AS n FROM lego_builders b JOIN shelf c ON c.builder_id = b.builder_id \
-         GROUP BY b.home_zone",
+        "SELECT cy.zone, COUNT(*) AS n FROM lego_builders b JOIN shelf c ON c.builder_id = b.builder_id \
+         JOIN lego_streets st ON st.street_id = b.street_id JOIN lego_postcodes pc ON pc.postcode_id = st.postcode_id \
+         JOIN lego_cities cy ON cy.city_id = pc.city_id GROUP BY cy.zone",
     );
 }
 
-/// The builders joined to their collection rows under a condition, by home zone.
+/// The builders joined to their collection rows under a condition, by zone.
 fn counted_where(condition: &str) -> String {
     format!(
-        "SELECT b.home_zone, COUNT(*) AS n FROM lego_builders b JOIN lego_collection c ON c.builder_id = b.builder_id \
-         WHERE {condition} GROUP BY b.home_zone"
+        "SELECT cy.zone, COUNT(*) AS n FROM lego_builders b JOIN lego_collection c ON c.builder_id = b.builder_id \
+         JOIN lego_streets st ON st.street_id = b.street_id JOIN lego_postcodes pc ON pc.postcode_id = st.postcode_id \
+         JOIN lego_cities cy ON cy.city_id = pc.city_id WHERE {condition} GROUP BY cy.zone"
     )
 }
 
@@ -568,24 +622,27 @@ fn two_bars_or_ampersands_in_a_string_or_a_comment_do_not_stop_the_respelling() 
 #[test]
 fn a_grouped_select_with_having_is_left_alone() {
     as_read_on_lego(
-        "SELECT b.home_zone, COUNT(*) AS n FROM lego_builders b JOIN lego_collection c ON c.builder_id = b.builder_id \
-         GROUP BY b.home_zone HAVING COUNT(*) > 1",
+        "SELECT cy.zone, COUNT(*) AS n FROM lego_builders b JOIN lego_collection c ON c.builder_id = b.builder_id \
+         JOIN lego_streets st ON st.street_id = b.street_id JOIN lego_postcodes pc ON pc.postcode_id = st.postcode_id \
+         JOIN lego_cities cy ON cy.city_id = pc.city_id GROUP BY cy.zone HAVING COUNT(*) > 1",
     );
 }
 
 #[test]
 fn a_distinct_grouped_select_is_left_alone() {
     as_read_on_lego(
-        "SELECT DISTINCT b.home_zone, COUNT(*) AS n FROM lego_builders b JOIN lego_collection c ON c.builder_id = b.builder_id \
-         GROUP BY b.home_zone",
+        "SELECT DISTINCT cy.zone, COUNT(*) AS n FROM lego_builders b JOIN lego_collection c ON c.builder_id = b.builder_id \
+         JOIN lego_streets st ON st.street_id = b.street_id JOIN lego_postcodes pc ON pc.postcode_id = st.postcode_id \
+         JOIN lego_cities cy ON cy.city_id = pc.city_id GROUP BY cy.zone",
     );
 }
 
 #[test]
 fn a_grouped_select_with_rollup_is_left_alone() {
     as_read_on_lego(
-        "SELECT b.home_zone, COUNT(*) AS n FROM lego_builders b JOIN lego_collection c ON c.builder_id = b.builder_id \
-         GROUP BY b.home_zone WITH ROLLUP",
+        "SELECT cy.zone, COUNT(*) AS n FROM lego_builders b JOIN lego_collection c ON c.builder_id = b.builder_id \
+         JOIN lego_streets st ON st.street_id = b.street_id JOIN lego_postcodes pc ON pc.postcode_id = st.postcode_id \
+         JOIN lego_cities cy ON cy.city_id = pc.city_id GROUP BY cy.zone WITH ROLLUP",
     );
 }
 
@@ -597,16 +654,18 @@ fn a_select_with_no_group_by_is_left_alone() {
 #[test]
 fn a_grouped_select_returning_an_unnamed_computed_column_is_left_alone() {
     as_read_on_lego(
-        "SELECT b.home_zone, COUNT(*) FROM lego_builders b JOIN lego_collection c ON c.builder_id = b.builder_id \
-         GROUP BY b.home_zone",
+        "SELECT cy.zone, COUNT(*) FROM lego_builders b JOIN lego_collection c ON c.builder_id = b.builder_id \
+         JOIN lego_streets st ON st.street_id = b.street_id JOIN lego_postcodes pc ON pc.postcode_id = st.postcode_id \
+         JOIN lego_cities cy ON cy.city_id = pc.city_id GROUP BY cy.zone",
     );
 }
 
 #[test]
 fn a_grouped_select_ordered_by_a_column_it_does_not_group_by_is_left_alone() {
     as_read_on_lego(
-        "SELECT b.home_zone, COUNT(*) AS n FROM lego_builders b JOIN lego_collection c ON c.builder_id = b.builder_id \
-         GROUP BY b.home_zone ORDER BY c.set_num",
+        "SELECT cy.zone, COUNT(*) AS n FROM lego_builders b JOIN lego_collection c ON c.builder_id = b.builder_id \
+         JOIN lego_streets st ON st.street_id = b.street_id JOIN lego_postcodes pc ON pc.postcode_id = st.postcode_id \
+         JOIN lego_cities cy ON cy.city_id = pc.city_id GROUP BY cy.zone ORDER BY c.set_num",
     );
 }
 
@@ -636,9 +695,12 @@ fn arms_joining_the_relation_to_columns_of_other_types_are_left_alone() {
 fn arms_joining_the_relation_to_columns_of_other_collations_are_left_alone() {
     // the first arm compares by the binary collation and the second without case; the union would
     // compare both by the binary one
-    as_read_on_lego(
-        "SELECT c.builder_id, i.id FROM lego_collection c JOIN lego_inventories i ON i.set_num_ci = c.set_num \
-         UNION ALL SELECT c.builder_id, i.id FROM lego_collection c JOIN lego_inventories i ON i.set_num_ci = c.typed_set_num_ci",
+    let sql = "SELECT c.builder_id, i.id FROM lego_collection c JOIN lego_inventories i ON i.set_num_ci = c.set_num \
+         UNION ALL SELECT c.builder_id, i.id FROM lego_collection c JOIN lego_inventories i ON i.set_num_ci = c.typed_set_num_ci";
+    assert_eq!(
+        respell(&lego_with_columns_without_case(), sql).unwrap(),
+        sql,
+        "the statement was respelled"
     );
 }
 
@@ -655,8 +717,8 @@ fn arms_whose_rest_is_not_joined_within_itself_are_left_alone() {
 #[test]
 fn a_with_query_whose_table_a_later_with_query_names_is_not_read_as_its_relations() {
     let sql = OWNED.replace(
-        " SELECT b.home_zone,",
-        ", lego_inventory_sets AS (SELECT 1 AS inventory_id) SELECT b.home_zone,",
+        " SELECT cy.zone,",
+        ", lego_inventory_sets AS (SELECT 1 AS inventory_id) SELECT cy.zone,",
     );
     let out = on_lego(&sql);
     assert!(!out.contains("side_a"), "{out}");
@@ -665,15 +727,20 @@ fn a_with_query_whose_table_a_later_with_query_names_is_not_read_as_its_relation
 
 #[test]
 fn each_side_is_joined_within_itself() {
-    // the themes alone on one side: the builders and the collection rows are joined to each other
+    // the themes alone on one side: the builders, the collection rows and the builders' cities
+    // are joined to each other
     assert_eq!(
         on_lego(
-            "SELECT b.home_zone, COUNT(*) AS n FROM lego_builders b JOIN lego_collection c ON c.builder_id = b.builder_id \
-             JOIN lego_themes t ON t.name = b.name GROUP BY b.home_zone"
+            "SELECT cy.zone, COUNT(*) AS n FROM lego_builders b JOIN lego_collection c ON c.builder_id = b.builder_id \
+             JOIN lego_themes t ON t.name = b.name \
+             JOIN lego_streets st ON st.street_id = b.street_id JOIN lego_postcodes pc ON pc.postcode_id = st.postcode_id \
+             JOIN lego_cities cy ON cy.city_id = pc.city_id GROUP BY cy.zone"
         ),
-        "WITH side_a (k1, g1, n) AS (SELECT b.name, b.home_zone, COUNT(*) FROM lego_builders b \
-         JOIN lego_collection c ON c.builder_id = b.builder_id GROUP BY b.name, b.home_zone) \
-         SELECT side_a.g1 AS home_zone, CAST(SUM(side_a.n * side_b.n) AS SIGNED) AS n \
+        "WITH side_a (k1, g1, n) AS (SELECT b.name, cy.zone, COUNT(*) FROM lego_builders b \
+         JOIN lego_collection c ON c.builder_id = b.builder_id \
+         JOIN lego_streets st ON st.street_id = b.street_id JOIN lego_postcodes pc ON pc.postcode_id = st.postcode_id \
+         JOIN lego_cities cy ON cy.city_id = pc.city_id GROUP BY b.name, cy.zone) \
+         SELECT side_a.g1 AS zone, CAST(SUM(side_a.n * side_b.n) AS SIGNED) AS n \
          FROM side_a \
          JOIN (SELECT t.name, COUNT(*) FROM lego_themes t WHERE t.name IN (SELECT k1 FROM side_a) GROUP BY t.name) \
          AS side_b (k1, n) ON side_a.k1 = side_b.k1 GROUP BY side_a.g1\n"
@@ -683,8 +750,10 @@ fn each_side_is_joined_within_itself() {
 #[test]
 fn columns_of_other_types_joined_across_the_cut_are_left_alone() {
     as_read_on_lego(
-        "SELECT b.home_zone, COUNT(*) AS n FROM lego_builders b JOIN lego_collection c ON c.builder_id = b.builder_id \
-         JOIN lego_themes t ON t.name = b.builder_id GROUP BY b.home_zone",
+        "SELECT cy.zone, COUNT(*) AS n FROM lego_builders b JOIN lego_collection c ON c.builder_id = b.builder_id \
+         JOIN lego_themes t ON t.name = b.builder_id \
+         JOIN lego_streets st ON st.street_id = b.street_id JOIN lego_postcodes pc ON pc.postcode_id = st.postcode_id \
+         JOIN lego_cities cy ON cy.city_id = pc.city_id GROUP BY cy.zone",
     );
 }
 
@@ -692,13 +761,17 @@ fn columns_of_other_types_joined_across_the_cut_are_left_alone() {
 fn a_side_whose_rows_are_not_counted_gives_a_row_per_group() {
     assert_eq!(
         on_lego(
-            "SELECT b.home_zone, COUNT(DISTINCT c.builder_id, c.row_no) AS n \
-             FROM lego_builders b JOIN lego_collection c ON c.builder_id = b.builder_id GROUP BY b.home_zone"
+            "SELECT cy.zone, COUNT(DISTINCT c.builder_id, c.row_no) AS n \
+             FROM lego_builders b JOIN lego_collection c ON c.builder_id = b.builder_id \
+             JOIN lego_streets st ON st.street_id = b.street_id JOIN lego_postcodes pc ON pc.postcode_id = st.postcode_id \
+             JOIN lego_cities cy ON cy.city_id = pc.city_id GROUP BY cy.zone"
         ),
         "WITH side_b (k1, n) AS (SELECT c.builder_id, COUNT(*) FROM lego_collection c GROUP BY c.builder_id) \
-         SELECT side_a.g1 AS home_zone, CAST(SUM(side_b.n) AS SIGNED) AS n \
-         FROM (SELECT b.builder_id, b.home_zone FROM lego_builders b WHERE b.builder_id IN (SELECT k1 FROM side_b) \
-         GROUP BY b.builder_id, b.home_zone) AS side_a (k1, g1) \
+         SELECT side_a.g1 AS zone, CAST(SUM(side_b.n) AS SIGNED) AS n \
+         FROM (SELECT b.builder_id, cy.zone FROM lego_builders b \
+         JOIN lego_streets st ON st.street_id = b.street_id JOIN lego_postcodes pc ON pc.postcode_id = st.postcode_id \
+         JOIN lego_cities cy ON cy.city_id = pc.city_id WHERE b.builder_id IN (SELECT k1 FROM side_b) \
+         GROUP BY b.builder_id, cy.zone) AS side_a (k1, g1) \
          JOIN side_b ON side_a.k1 = side_b.k1 GROUP BY side_a.g1\n"
     );
 }
@@ -706,8 +779,8 @@ fn a_side_whose_rows_are_not_counted_gives_a_row_per_group() {
 #[test]
 fn a_with_query_read_twice_is_not_read_as_its_relations() {
     let twice = OWNED.replace(
-        " SELECT b.home_zone,",
-        ", twice AS (SELECT builder_id FROM held) SELECT b.home_zone,",
+        " SELECT cy.zone,",
+        ", twice AS (SELECT builder_id FROM held) SELECT cy.zone,",
     );
     let out = on_lego(&twice);
     assert!(
@@ -723,7 +796,7 @@ fn a_with_query_holding_a_name_the_select_gives_another_relation_is_not_read_as_
             "lego_builders b ON b.builder_id",
             "lego_builders o ON o.builder_id",
         )
-        .replace("SELECT b.home_zone", "SELECT o.home_zone");
+        .replace("st.street_id = b.street_id", "st.street_id = o.street_id");
     let out = on_lego(&alike);
     assert!(
         !out.contains("side_a") && out.contains("AS arms (k1, c1, c2)"),
@@ -735,12 +808,15 @@ fn a_with_query_holding_a_name_the_select_gives_another_relation_is_not_read_as_
 fn a_count_of_a_column_is_its_sides_count_times_the_other_sides_rows() {
     assert_eq!(
         on_lego(
-            "SELECT b.home_zone, COUNT(c.typed_name) AS t \
-             FROM lego_builders b JOIN lego_collection c ON c.builder_id = b.builder_id GROUP BY b.home_zone"
+            "SELECT cy.zone, COUNT(c.typed_name) AS t \
+             FROM lego_builders b JOIN lego_collection c ON c.builder_id = b.builder_id \
+             JOIN lego_streets st ON st.street_id = b.street_id JOIN lego_postcodes pc ON pc.postcode_id = st.postcode_id \
+             JOIN lego_cities cy ON cy.city_id = pc.city_id GROUP BY cy.zone"
         ),
-        "WITH side_a (k1, g1, n) AS (SELECT b.builder_id, b.home_zone, COUNT(*) FROM lego_builders b \
-         GROUP BY b.builder_id, b.home_zone) \
-         SELECT side_a.g1 AS home_zone, CAST(SUM(side_b.p1 * side_a.n) AS SIGNED) AS t \
+        "WITH side_a (k1, g1, n) AS (SELECT b.builder_id, cy.zone, COUNT(*) FROM lego_builders b \
+         JOIN lego_streets st ON st.street_id = b.street_id JOIN lego_postcodes pc ON pc.postcode_id = st.postcode_id \
+         JOIN lego_cities cy ON cy.city_id = pc.city_id GROUP BY b.builder_id, cy.zone) \
+         SELECT side_a.g1 AS zone, CAST(SUM(side_b.p1 * side_a.n) AS SIGNED) AS t \
          FROM side_a \
          JOIN (SELECT c.builder_id, COUNT(*), COUNT(c.typed_name) FROM lego_collection c \
          WHERE c.builder_id IN (SELECT k1 FROM side_a) GROUP BY c.builder_id) \
@@ -750,16 +826,19 @@ fn a_count_of_a_column_is_its_sides_count_times_the_other_sides_rows() {
 
 #[test]
 fn the_cut_with_the_fewest_relations_on_its_smaller_side_is_taken_the_first_in_order() {
-    // the collection rows alone, or the themes alone, on one side: both cuts hold
+    // the collection rows alone, the themes alone, or the cities alone, on one side: each cut holds
     assert_eq!(
         on_lego(
-            "SELECT b.home_zone, MAX(c.set_num) AS m, MIN(t.name) AS t FROM lego_builders b \
+            "SELECT cy.zone, MAX(c.set_num) AS m, MIN(t.name) AS t FROM lego_builders b \
              JOIN lego_collection c ON c.builder_id = b.builder_id JOIN lego_themes t ON t.name = b.name \
-             GROUP BY b.home_zone"
+             JOIN lego_streets st ON st.street_id = b.street_id JOIN lego_postcodes pc ON pc.postcode_id = st.postcode_id \
+             JOIN lego_cities cy ON cy.city_id = pc.city_id GROUP BY cy.zone"
         ),
-        "WITH side_a (k1, g1, p2) AS (SELECT b.builder_id, b.home_zone, MIN(t.name) FROM lego_builders b \
-         JOIN lego_themes t ON t.name = b.name GROUP BY b.builder_id, b.home_zone) \
-         SELECT side_a.g1 AS home_zone, MAX(side_b.p1) AS m, MIN(side_a.p2) AS t \
+        "WITH side_a (k1, g1, p2) AS (SELECT b.builder_id, cy.zone, MIN(t.name) FROM lego_builders b \
+         JOIN lego_themes t ON t.name = b.name \
+         JOIN lego_streets st ON st.street_id = b.street_id JOIN lego_postcodes pc ON pc.postcode_id = st.postcode_id \
+         JOIN lego_cities cy ON cy.city_id = pc.city_id GROUP BY b.builder_id, cy.zone) \
+         SELECT side_a.g1 AS zone, MAX(side_b.p1) AS m, MIN(side_a.p2) AS t \
          FROM side_a \
          JOIN (SELECT c.builder_id, MAX(c.set_num) FROM lego_collection c WHERE c.builder_id IN (SELECT k1 FROM side_a) \
          GROUP BY c.builder_id) AS side_b (k1, p1) \
@@ -788,13 +867,17 @@ fn the_side_a_count_of_distinct_values_reads_holds_the_keys_the_other_is_grouped
     // both sides' rows are counted
     assert_eq!(
         on_lego(
-            "SELECT b.home_zone, COUNT(DISTINCT c.builder_id, c.row_no) AS n, COUNT(*) AS r \
-             FROM lego_builders b JOIN lego_collection c ON c.builder_id = b.builder_id GROUP BY b.home_zone"
+            "SELECT cy.zone, COUNT(DISTINCT c.builder_id, c.row_no) AS n, COUNT(*) AS r \
+             FROM lego_builders b JOIN lego_collection c ON c.builder_id = b.builder_id \
+             JOIN lego_streets st ON st.street_id = b.street_id JOIN lego_postcodes pc ON pc.postcode_id = st.postcode_id \
+             JOIN lego_cities cy ON cy.city_id = pc.city_id GROUP BY cy.zone"
         ),
         "WITH side_b (k1, n) AS (SELECT c.builder_id, COUNT(*) FROM lego_collection c GROUP BY c.builder_id) \
-         SELECT side_a.g1 AS home_zone, CAST(SUM(side_b.n) AS SIGNED) AS n, CAST(SUM(side_a.n * side_b.n) AS SIGNED) AS r \
-         FROM (SELECT b.builder_id, b.home_zone, COUNT(*) FROM lego_builders b WHERE b.builder_id IN (SELECT k1 FROM side_b) \
-         GROUP BY b.builder_id, b.home_zone) AS side_a (k1, g1, n) \
+         SELECT side_a.g1 AS zone, CAST(SUM(side_b.n) AS SIGNED) AS n, CAST(SUM(side_a.n * side_b.n) AS SIGNED) AS r \
+         FROM (SELECT b.builder_id, cy.zone, COUNT(*) FROM lego_builders b \
+         JOIN lego_streets st ON st.street_id = b.street_id JOIN lego_postcodes pc ON pc.postcode_id = st.postcode_id \
+         JOIN lego_cities cy ON cy.city_id = pc.city_id WHERE b.builder_id IN (SELECT k1 FROM side_b) \
+         GROUP BY b.builder_id, cy.zone) AS side_a (k1, g1, n) \
          JOIN side_b ON side_a.k1 = side_b.k1 GROUP BY side_a.g1\n"
     );
 }

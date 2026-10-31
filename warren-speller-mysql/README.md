@@ -19,12 +19,16 @@ rules as they are.
 
 ## A first example
 
-Each home zone's collection rows, their row numbers summed, and the least set they hold:
+Each zone's collection rows, their row numbers summed, and the least set they hold. A builder's
+zone is its city's, reached through its street and postcode:
 
 ```sql
-SELECT b.home_zone, COUNT(*) AS n, SUM(c.row_no) AS s, MIN(c.set_num) AS m
+SELECT cy.zone, COUNT(*) AS n, SUM(c.row_no) AS s, MIN(c.set_num) AS m
 FROM lego_builders b JOIN lego_collection c ON c.builder_id = b.builder_id
-GROUP BY b.home_zone
+JOIN lego_streets st ON st.street_id = b.street_id
+JOIN lego_postcodes pc ON pc.postcode_id = st.postcode_id
+JOIN lego_cities cy ON cy.city_id = pc.city_id
+GROUP BY cy.zone
 ```
 
 As written, MySQL joins every builder to every one of their collection rows and groups the pairs by
@@ -33,9 +37,12 @@ rows are grouped only for the builders the other side holds:
 
 ```sql
 WITH side_a (k1, g1, n) AS (
-  SELECT b.builder_id, b.home_zone, COUNT(*) FROM lego_builders b
-  GROUP BY b.builder_id, b.home_zone)
-SELECT side_a.g1 AS home_zone, CAST(SUM(side_a.n * side_b.n) AS SIGNED) AS n,
+  SELECT b.builder_id, cy.zone, COUNT(*) FROM lego_builders b
+  JOIN lego_streets st ON st.street_id = b.street_id
+  JOIN lego_postcodes pc ON pc.postcode_id = st.postcode_id
+  JOIN lego_cities cy ON cy.city_id = pc.city_id
+  GROUP BY b.builder_id, cy.zone)
+SELECT side_a.g1 AS zone, CAST(SUM(side_a.n * side_b.n) AS SIGNED) AS n,
        SUM(side_b.p2 * side_a.n) AS s, MIN(side_b.p3) AS m
 FROM side_a
 JOIN (SELECT c.builder_id, COUNT(*), SUM(c.row_no), MIN(c.set_num) FROM lego_collection c
@@ -293,7 +300,9 @@ cargo build
 cargo test
 ```
 
-The tests read `tests/catalogs/lego.tsv`, a catalog as a server gives it, and need no server.
+The tests read `tests/catalogs/lego.tsv`: the catalog of the tables
+[sqlc-brickgen](https://crates.io/crates/sqlc-brickgen) makes, as MySQL holds them with their keys
+and indexes, in the rows `catalog::query` returns. They need no server.
 
 ## License
 
