@@ -11,10 +11,11 @@
 //! a derived table holding the union of the rest of each arm and the values it was joined on.
 
 use super::relations::{
-    bare, column_at, conditions, inner_joins_only, plain, qualified, relations_of, scan, Ctx, Rel,
-    What,
+    bare, column_at, conditions, inner_joins_only, kind_of, plain, qualified, relations_of, scan,
+    Ctx, Rel, What,
 };
 use super::{and_text, from_text};
+use crate::catalog::Kind;
 use crate::sql;
 use sqlparser::ast::{
     BinaryOperator, Expr, Query, Select, SelectItem, SetExpr, SetOperator, SetQuantifier,
@@ -222,8 +223,18 @@ fn respelled(
     let first = &arms[0];
     let columns: Vec<usize> = first.joined.iter().map(|(c, _)| *c).collect();
     let width = first.items.len();
+    // what every arm joins the relation to is of one known type and collation, so that the union
+    // holds each value as its arm did and the join compares it as its arm did
+    let kinds = |a: &Arm| -> Vec<Option<Kind>> {
+        a.joined.iter().map(|(_, e)| kind_of(e, &a.rels)).collect()
+    };
+    let joined_kinds = kinds(first);
+    if joined_kinds.iter().any(Option::is_none) {
+        return None;
+    }
     for a in arms {
         if a.joined.iter().map(|(c, _)| *c).collect::<Vec<_>>() != columns
+            || kinds(a) != joined_kinds
             || a.own
                 .iter()
                 .map(|e| e.to_string())

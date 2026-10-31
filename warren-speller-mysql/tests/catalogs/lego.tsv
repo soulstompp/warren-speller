@@ -8,6 +8,7 @@ column	lego	lego_collection	row_no	NO	int	NULL
 column	lego	lego_collection	set_num	NO	varchar	utf8mb4_0900_bin		
 column	lego	lego_collection	typed_set_num	YES	varchar	utf8mb4_0900_bin		
 column	lego	lego_collection	typed_name	YES	varchar	utf8mb4_0900_bin		
+column	lego	lego_collection	typed_set_num_ci	YES	varchar	utf8mb4_0900_ai_ci		
 column	lego	lego_colors	id	NO	int	NULL		
 column	lego	lego_colors	name	NO	varchar	utf8mb4_0900_bin		
 column	lego	lego_colors	rgb	NO	varchar	utf8mb4_0900_bin		
@@ -15,6 +16,7 @@ column	lego	lego_colors	is_trans	NO	char	utf8mb4_0900_bin
 column	lego	lego_inventories	id	NO	int	NULL		
 column	lego	lego_inventories	version	NO	int	NULL		
 column	lego	lego_inventories	set_num	NO	varchar	utf8mb4_0900_bin		
+column	lego	lego_inventories	set_num_ci	YES	varchar	utf8mb4_0900_ai_ci		
 column	lego	lego_inventory_parts	inventory_id	NO	int	NULL		
 column	lego	lego_inventory_parts	part_num	NO	varchar	utf8mb4_0900_bin		
 column	lego	lego_inventory_parts	color_id	NO	int	NULL		

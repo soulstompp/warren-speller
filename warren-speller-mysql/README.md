@@ -142,6 +142,9 @@ The collection is read once, where it was read once per arm.
   reads the common relation and another is an equality of one of its columns with an expression
   that does not read it, and there is at least one. The common relation's columns joined so are the
   same in every arm.
+- What each arm joins each of those columns to compares as one known type, the same in every arm:
+  whole numbers, decimals, text in one collation, and so on. The union holds those values as one
+  type, and the join compares them as that type.
 - The conditions on the common relation alone are the same in every arm.
 - The arms return as many columns each, and each column returned reads the common relation alone,
   as the same expression in every arm, or does not read it in any arm.

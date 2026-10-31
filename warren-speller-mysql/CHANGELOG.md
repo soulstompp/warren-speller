@@ -9,5 +9,8 @@ with these changes:
 - A statement holding `||` or `&&` is written back as read. MySQL reads `||` as OR unless the
   session's `sql_mode` has `PIPES_AS_CONCAT`; a condition joined by it was read as concatenation,
   and the respelled statement could return other rows.
+- A `UNION ALL` whose arms join the common relation to values of different types or collations is
+  written back as read. The union holds those values as one type and compares them as that type,
+  and could lose rows.
 
 [before]: https://docs.rs/crate/warren-mysql-speller/0.1.1/source/CHANGELOG.md

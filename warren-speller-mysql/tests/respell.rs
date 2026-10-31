@@ -611,6 +611,25 @@ fn the_relation_every_arm_joins_may_be_joined_on_another_column_of_the_rest_in_e
 }
 
 #[test]
+fn arms_joining_the_relation_to_columns_of_other_types_are_left_alone() {
+    // the union would return the whole number as text, and compare it as text
+    as_read_on_lego(
+        "SELECT c.builder_id, i.id FROM lego_collection c JOIN lego_inventories i ON i.set_num = c.set_num \
+         UNION ALL SELECT c.builder_id, i.id FROM lego_collection c JOIN lego_inventories i ON i.set_num = c.row_no",
+    );
+}
+
+#[test]
+fn arms_joining_the_relation_to_columns_of_other_collations_are_left_alone() {
+    // the first arm compares by the binary collation and the second without case; the union would
+    // compare both by the binary one
+    as_read_on_lego(
+        "SELECT c.builder_id, i.id FROM lego_collection c JOIN lego_inventories i ON i.set_num_ci = c.set_num \
+         UNION ALL SELECT c.builder_id, i.id FROM lego_collection c JOIN lego_inventories i ON i.set_num_ci = c.typed_set_num_ci",
+    );
+}
+
+#[test]
 fn arms_whose_rest_is_not_joined_within_itself_are_left_alone() {
     as_read_on_lego(
         "SELECT c.builder_id, i.id, s.year FROM lego_collection c JOIN lego_inventories i ON i.set_num = c.set_num \
