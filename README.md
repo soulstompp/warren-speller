@@ -11,6 +11,10 @@ This repository holds one speller for each engine, each a crate of its own:
 - [`warren-speller-pg`](warren-speller-pg/README.md) respells inside PostgreSQL's planner, on the
   statement as PostgreSQL parsed it. An extension installs it from `_PG_init`; the surveyor,
   [warren-surveyor-pg](https://github.com/soulstompp/warren-surveyor), is one.
+- [`warren-speller-mysql`](warren-speller-mysql/README.md) respells in the client, before the
+  statement reaches MySQL, on the statement as [sqlparser](https://crates.io/crates/sqlparser)
+  parsed it, against a catalog of the database read from `information_schema`. A program, a proxy
+  or a driver hands it the statement's text and sends what it returns.
 
 Each crate's README sets out every rule as what it changes, the read it cancels and when it applies,
 so that a database engine can take any of them into its own planner.

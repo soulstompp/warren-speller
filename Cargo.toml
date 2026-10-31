@@ -1,6 +1,10 @@
-# The spellers' workspace: one crate for each engine's speller, and the PostgreSQL speller's laws. Each carries its own licence and copyright.
+# The spellers' workspace: one crate for each engine's speller, and the PostgreSQL speller's laws.
+# Each carries its own licence and copyright.
 [workspace]
-members = ["warren-speller-pg", "warren-speller-pg-laws"]
+members = ["warren-speller-pg", "warren-speller-pg-laws", "warren-speller-mysql"]
+# A plain `cargo build` or `cargo test` needs no PostgreSQL; the PostgreSQL crates build with
+# `cargo pgrx`.
+default-members = ["warren-speller-mysql"]
 resolver = "2"
 
 # pgrx unwinds a Rust panic into a PostgreSQL ERROR.
