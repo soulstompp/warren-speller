@@ -25,10 +25,16 @@ pub(crate) unsafe fn attribute(
 
 /// Whether column `i` of `desc`, counted from 0, is a column NOT NULL by a validated constraint.
 pub(crate) unsafe fn not_null(desc: pg_sys::TupleDesc, i: c_int) -> bool {
-    #[cfg(any(feature = "pg18", feature = "pg19"))]
+    #[cfg(feature = "pg18")]
     {
         let attribute = pg_sys::TupleDescCompactAttr(desc, i);
         (*attribute).attnullability as u8 == pg_sys::ATTNULLABLE_VALID && !(*attribute).attisdropped
+    }
+    #[cfg(feature = "pg19")]
+    {
+        let attribute = pg_sys::TupleDescCompactAttr(desc, i);
+        (*attribute).attnullability as u8 == pg_sys::ATTNULLABLE_VALID
+            && !(*attribute).attisdropped()
     }
     #[cfg(not(any(feature = "pg18", feature = "pg19")))]
     {
